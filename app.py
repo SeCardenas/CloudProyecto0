@@ -7,8 +7,7 @@ import flask_cors
 from flask_marshmallow import Marshmallow
 
 
-guard = flask_praetorian.Praetorian()
-cors = flask_cors.CORS()
+
 
 # Initialize flask app for the example
 app = Flask(__name__)
@@ -16,26 +15,34 @@ app.debug = True
 app.config['SECRET_KEY'] = 'top secret'
 app.config['JWT_ACCESS_LIFESPAN'] = {'hours': 24}
 app.config['JWT_REFRESH_LIFESPAN'] = {'days': 30}
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{os.path.join(os.getcwd(), 'database.db')}"
 
 db = flask_sqlalchemy.SQLAlchemy(app)
 ma = Marshmallow(app)
+guard = flask_praetorian.Praetorian()
+cors = flask_cors.CORS(app)
 
 
 class User(db.Model):
 	__tablename__ = 'user'
 	id = db.Column(db.Integer, primary_key=True)
-	username = db.Column(db.Text, unique=True)
+	email = db.Column(db.Text, unique=True)
 	password = db.Column(db.Text)
+	roles = db.Column(db.Text)
 	is_active = db.Column(db.Boolean, default=True, server_default='true')
 	events = db.relationship("Event")
 
 	@property
 	def rolenames(self):
-		return []
+		try:
+			return self.roles.split(',')
+		except Exception:
+			return []
 
 	@classmethod
-	def lookup(cls, username):
-		return cls.query.filter_by(username=username).one_or_none()
+	def lookup(cls, email):
+		return cls.query.filter_by(email=email).one_or_none()
 
 	@classmethod
 	def identify(cls, id):
@@ -84,12 +91,6 @@ events_schema = Event_Schema(many=True)
 # Initialize the flask-praetorian instance for the app
 guard.init_app(app, User)
 
-# Initialize a local database for the example
-app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{os.path.join(os.getcwd(), 'database.db')}"
-db.init_app(app)
-
-# Initializes CORS so that the api_tool can talk to the example app
-cors.init_app(app)
 
 # Views
 @app.route('/')
@@ -102,24 +103,24 @@ def login():
 	"""
 	.. example::
 	   $ curl http://localhost:5000/login -X POST \
-		 -d '{"username":"Sergio","password":"password123"}'
+		 -d '{"email":"Sergio","password":"password123"}'
 	"""
 	req = request.get_json()
-	username = req.get('username', None)
+	email = req.get('email', None)
 	password = req.get('password', None)
-	user = guard.authenticate(username, password)
+	user = guard.authenticate(email, password)
 	return {'access_token': guard.encode_jwt_token(user)}, 200
 
 
 @app.route('/register', methods=['POST'])
 def register():
 	req = request.get_json()
-	username = req.get('username', None)
+	email = req.get('email', None)
 	password = req.get('password', None)
 	app.logger.info('recupera')
-	if db.session.query(User).filter_by(username=username).count() < 1:
+	if db.session.query(User).filter_by(email=email).count() < 1:
 		db.session.add(User(
-			username=username,
+			email=email,
 			password=guard.hash_password(password),
 			))
 		db.session.commit()
@@ -221,5 +222,12 @@ def get_event(event_id):
 # Run the app
 if __name__ == '__main__':
 	if len(sys.argv) > 1 and sys.argv[1] == 'init':
+		db.drop_all()
 		db.create_all()
-	app.run(host='0.0.0.0', port=5000, debug=True)
+		if db.session.query(User).filter_by(email='secardenas@cardenas.com').count() < 1:
+			db.session.add(User(
+				email='secardenas@cardenas.com',
+				password=guard.hash_password('password123'),
+				roles='admin'
+				))
+	app.run(host='0.0.0.0', port=8080)
