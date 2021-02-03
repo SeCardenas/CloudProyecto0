@@ -143,24 +143,13 @@ def refresh():
 	return {'access_token': new_token}, 200
 
 
-@app.route('/events')
-@flask_praetorian.auth_required
-def list_events():
-	user = flask_praetorian.current_user()
-	return {"events":events_schema.dump(user.events)}
-
-
-@app.route('/categories')
-@flask_praetorian.auth_required
-def list_categories():
-	categories = Category.query.all()
-	return {"categories":categories_schema.dump(categories)}
-
-
-@app.route('/categories', methods=['POST'])
+@app.route('/categories', methods=['POST','GET'])
 @flask_praetorian.auth_required
 def create_category():
 	user = flask_praetorian.current_user()
+	if request.method == 'GET':
+		categories = Category.query.all()
+		return {"categories":categories_schema.dump(categories)}
 	if not 'admin' in user.rolenames:
 		return {"msg":"need the role admin"},403
 	req = request.get_json()
@@ -171,10 +160,12 @@ def create_category():
 	return category_schema.dump(category)
 
 
-@app.route('/events', methods=['POST'])
+@app.route('/events', methods=['POST','GET'])
 @flask_praetorian.auth_required
 def create_event():
 	user = flask_praetorian.current_user()
+	if request.method == 'GET':
+		return {"events":events_schema.dump(user.events)}
 	req = request.get_json()
 	category_id = req['category_id']
 	user_id = user.id
