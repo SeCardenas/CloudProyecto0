@@ -29,7 +29,7 @@ class User(db.Model):
 	id = db.Column(db.Integer, primary_key=True)
 	email = db.Column(db.Text, unique=True)
 	password = db.Column(db.Text)
-	roles = db.Column(db.Text)
+	roles = db.Column(db.Text,default='')
 	is_active = db.Column(db.Boolean, default=True, server_default='true')
 	events = db.relationship("Event")
 
@@ -117,7 +117,8 @@ def register():
 	req = request.get_json()
 	email = req.get('email', None)
 	password = req.get('password', None)
-	app.logger.info('recupera')
+	if email == None or password == None:
+		return {"msg":"Email and password required"},400
 	if db.session.query(User).filter_by(email=email).count() < 1:
 		db.session.add(User(
 			email=email,
@@ -150,13 +151,18 @@ def list_events():
 
 
 @app.route('/categories')
+@flask_praetorian.auth_required
 def list_categories():
 	categories = Category.query.all()
 	return {"categories":categories_schema.dump(categories)}
 
 
 @app.route('/categories', methods=['POST'])
+@flask_praetorian.auth_required
 def create_category():
+	user = flask_praetorian.current_user()
+	if not 'admin' in user.rolenames:
+		return {"msg":"need the role admin"},403
 	req = request.get_json()
 	name = req['name']
 	category = Category(name=name)
@@ -221,13 +227,4 @@ def get_event(event_id):
 
 # Run the app
 if __name__ == '__main__':
-	if len(sys.argv) > 1 and sys.argv[1] == 'init':
-		db.drop_all()
-		db.create_all()
-		if db.session.query(User).filter_by(email='secardenas@cardenas.com').count() < 1:
-			db.session.add(User(
-				email='secardenas@cardenas.com',
-				password=guard.hash_password('password123'),
-				roles='admin'
-				))
-	app.run(host='0.0.0.0', port=8080)
+	app.run(host='0.0.0.0', port=5000)
